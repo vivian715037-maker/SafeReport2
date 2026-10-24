@@ -64,6 +64,9 @@ test("권한·중복 후보·사진 공개·만료·삭제를 실제 API로 검�
       ).status(),
     ).toBe(400);
     expect((await b.get("/api/reports/" + r.id)).status()).toBe(404);
+    expect((await b.get("/api/reports/" + r.id + "/office")).status()).toBe(
+      404,
+    );
     expect(
       (
         await b.post("/api/reports/" + r.id + "/risk", {
@@ -130,6 +133,21 @@ test("권한·중복 후보·사진 공개·만료·삭제를 실제 API로 검�
       data: { useAI: false },
     });
     expect((await absent.json()).result).toBe("유사 제보 없음");
+    const office = await (
+      await a.get("/api/reports/" + r.id + "/office")
+    ).json();
+    expect(office.recommendations[0].channel.id).toBe("safety");
+    expect(office.recommendations[0].channel.source.url).toContain(
+      "mois.go.kr",
+    );
+    expect(JSON.stringify(office)).not.toContain("37.5665123");
+    expect(
+      (
+        await a.patch("/api/reports/" + r.id, {
+          data: { agency: "가짜 기관", url: "https://evil.example" },
+        })
+      ).status(),
+    ).toBe(400);
     expect(
       (
         await a.post("/api/reports/" + r.id + "/analyze", {
@@ -159,6 +177,10 @@ test("권한·중복 후보·사진 공개·만료·삭제를 실제 API로 검�
       ).ok(),
     ).toBeTruthy();
     const visible = await (await b.get("/api/reports/" + r.id)).json();
+    // 공개 제보여도 비공개 관찰·위치에서 계산한 추천 근거를 타인에게 노출하지 않습니다.
+    expect((await b.get("/api/reports/" + r.id + "/office")).status()).toBe(
+      404,
+    );
     expect(visible.riskLevel).toBe("UNKNOWN");
     expect(visible.latitude).not.toBe(37.5665123);
     for (const field of [
@@ -383,6 +405,41 @@ test("간편 4단계·검색 선택·AI 실패 대체·전국 지도 즉시 표�
   ).toBeVisible();
   await expect(page.getByLabel("위험 유형", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("제목", { exact: true })).toHaveCount(0);
+  await page
+    .getByLabel("발견한 상황")
+    .fill("가상 검증: 불이 나고 연기가 치솟고 있습니다.");
+  await expect(
+    page.getByRole("link", { name: "119 화재·구조·구급 전화하기" }),
+  ).toHaveAttribute("href", "tel:119");
+  await expect(page.getByRole("link", { name: /112.*전화하기/ })).toHaveCount(
+    0,
+  );
+  await page
+    .getByLabel("발견한 상황")
+    .fill("가상 검증: 소화전 앞에 불법 주차한 차량이 있어요.");
+  await expect(
+    page.getByRole("complementary", { name: "긴급 연락 안내" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "확인하고 다음" }).click();
+  await expect(page.locator(".sr-routing-caution")).toContainText("공식 앱");
+  await expect(page.locator(".sr-routing-card")).toHaveCount(1);
+  await page.getByText("신고 대상·공식 출처", { exact: true }).click();
+  await expect(
+    page.getByRole("link", { name: /행정안전부 안전신문고 업무 안내/ }),
+  ).toHaveAttribute(
+    "href",
+    "https://www.mois.go.kr/frt/sub/a06/b10/safetyReport/screen.do",
+  );
+  await page.screenshot({
+    path: "test-results/reporting-mobile-parking.png",
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.getByRole("button", { name: "← 이전 화면", exact: true }).click();
   await page
     .getByLabel("발견한 상황")
     .fill("[데모] 보도블록이 깨져서 넘어질 수 있어요.");

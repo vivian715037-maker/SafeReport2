@@ -54,6 +54,21 @@ it("관찰 분석에서는 제목·신고문을 만들지 않고 위험 분류�
   expect(result.riskType).toBe("보행 위험");
   expect(result.title).toBe("");
   expect(mocks.ai.mock.calls[0][1]).toEqual(["fake.jpg"]);
+  expect(mocks.ai.mock.calls[0][0]).toContain('"latitude":37');
+  expect(mocks.ai.mock.calls[0][0]).toContain('"location":"가상 보도"');
+  expect(mocks.ai.mock.calls[0][0]).toContain("검증된 DB");
+});
+it("AI가 신고처나 연락처 필드를 추가하면 저장하지 않는다", async () => {
+  mocks.ai.mockResolvedValue({
+    ...observation,
+    agency: "가짜청",
+    url: "https://evil.example",
+    phone: "01000000000",
+  });
+  await expect(assistReport(source, false)).rejects.toMatchObject({
+    status: 503,
+  });
+  expect(mocks.update).toHaveBeenCalledTimes(1);
 });
 it("네 번째 화면 요청은 제목·신고문과 위험도를 함께 저장한다", async () => {
   mocks.ai.mockResolvedValue({

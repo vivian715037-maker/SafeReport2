@@ -44,9 +44,7 @@ try {
   await page.getByLabel("장소 이름이나 주소로 찾기").fill("서울시청");
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await page.locator(".sr-search-results button").first().click();
-  await page
-    .getByLabel("장소 설명")
-    .fill("[합성 검증] 시청 앞 가상 보도");
+  await page.getByLabel("장소 설명").fill("[합성 검증] 시청 앞 가상 보도");
   await page.getByRole("button", { name: "위치 확인 · 다음" }).click();
   await page
     .getByLabel("발견한 상황")
@@ -72,6 +70,14 @@ try {
     .getByLabel("신고 내용", { exact: true })
     .inputValue();
   if (!title || !content) throw Error("신고문 표시 실패");
+  const routing = await (
+    await context.request.get(baseURL + "/api/reports/" + id + "/office")
+  ).json();
+  if (
+    routing.recommendations[0]?.channel.id !== "safety" ||
+    !routing.reasons.some((reason) => reason.includes("사진 AI 관찰과"))
+  )
+    throw Error("실제 사진 AI 관찰과 신고처 추천 연결 실패");
   await page.getByRole("button", { name: "제목과 내용 모두 복사" }).click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   if (!copied.includes(title) || !copied.includes(content))
@@ -112,6 +118,8 @@ try {
     syntheticOnly: true,
     paidAiCalls: 1,
     aiDraftSuccess: true,
+    reportingWithPhotoAnalysis: true,
+    recommendedChannelIds: routing.recommendations.map((r) => r.channel.id),
     titlePresent: !!title,
     contentPresent: !!content,
     copyMatches: true,

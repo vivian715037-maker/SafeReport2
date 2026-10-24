@@ -20,10 +20,11 @@ import {
   storage,
   ApiError,
 } from "@/lib/server";
-import { effectiveStatus, office } from "@/lib/rules";
+import { effectiveStatus } from "@/lib/rules";
 import { findSimilar } from "@/lib/similar-server";
 import { riskSchema, riskPrompt, riskInputChanged } from "@/lib/risk";
 import { assistReport } from "@/lib/report-assistance";
+import { recommendReporting } from "@/lib/reporting";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ segments: string[] }> };
@@ -401,8 +402,11 @@ async function handle(req: Request, context: Context) {
       });
       return json(ownReport(updated));
     }
-    if (action === "office" && method === "GET")
-      return json(office(r.placeType));
+    if (action === "office" && method === "GET") {
+      // 비공개 관찰·정밀 위치로 만든 추천 근거는 작성자만 조회합니다.
+      if (!isOwner) throw new ApiError(404, "추천을 조회할 권한이 없습니다.");
+      return json(recommendReporting(r));
+    }
     throw new ApiError(404, "없는 API입니다.");
   } catch (error) {
     if (error instanceof ApiError)

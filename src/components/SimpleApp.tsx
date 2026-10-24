@@ -5,7 +5,8 @@ import dynamic from "next/dynamic";
 import LocationSearch from "./LocationSearch";
 import RiskAssessment from "./RiskAssessment";
 import WelcomeIllustration from "./WelcomeIllustration";
-import { labels, office } from "@/lib/rules";
+import { labels } from "@/lib/rules";
+import ReportingRecommendations from "./ReportingRecommendations";
 import { riskLabels } from "@/lib/risk";
 const Map = dynamic(() => import("./Map"), {
   ssr: false,
@@ -109,7 +110,9 @@ export default function SimpleApp() {
   );
   const pick = useCallback(
     (latitude: number, longitude: number) =>
-      setReport((old) => (old ? { ...old, latitude, longitude } : old)),
+      setReport((old) =>
+        old ? { ...old, latitude, longitude, riskAssessedAt: null } : old,
+      ),
     [],
   );
   useEffect(() => {
@@ -195,7 +198,24 @@ export default function SimpleApp() {
     return () => clearTimeout(timer);
   }, [report?.id, report?.status, report?.expiresAt, report?.isOwner]);
   function change(key: keyof Report, value: unknown) {
-    setReport((old) => (old ? { ...old, [key]: value } : old));
+    setReport((old) =>
+      old
+        ? {
+            ...old,
+            [key]: value,
+            // 새 설명을 입력하는 동안에도 예전 사진 관찰로 긴급성·신고처를 판단하지 않습니다.
+            ...([
+              "description",
+              "locationLabel",
+              "riskType",
+              "placeType",
+              "aiSummary",
+            ].includes(key) && old[key] !== value
+              ? { riskAssessedAt: null }
+              : {}),
+          }
+        : old,
+    );
   }
   /** 입력 필드만 저장하며 소유권과 공개 설정은 전용 API로 처리합니다. */
   async function save(current = report) {
@@ -755,6 +775,7 @@ export default function SimpleApp() {
               )}
               {step === 3 && report && (
                 <>
+                  <ReportingRecommendations report={report} emergencyOnly />
                   <label className="sr-field">
                     발견한 상황
                     <textarea
@@ -800,29 +821,7 @@ export default function SimpleApp() {
               )}
               {step === 4 && report && (
                 <>
-                  <section className="sr-office">
-                    <span className="sr-kicker">추천 신고처</span>
-                    <h2>안전신문고</h2>
-                    <p>
-                      도로·시설 등 생활 속 안전 위험을 신고하는 공식
-                      사이트입니다.
-                    </p>
-                    <a
-                      className="sr-primary"
-                      href="https://www.safetyreport.go.kr/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      안전신문고 열기 ↗
-                    </a>
-                    {office(report.placeType || "공공시설").name !==
-                      "안전신문고" && (
-                      <p className="sr-small">
-                        {office(report.placeType || "공공시설").name}에도 확인해
-                        주세요. {office(report.placeType || "공공시설").help}
-                      </p>
-                    )}
-                  </section>
+                  <ReportingRecommendations report={report} />
                   <section className="sr-draft">
                     <h2>신고문 준비하기</h2>
                     <p>
@@ -1077,14 +1076,7 @@ export default function SimpleApp() {
                   >
                     신고문 복사
                   </button>
-                  <a
-                    className="sr-secondary sr-wide"
-                    href="https://www.safetyreport.go.kr/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    안전신문고 열기 ↗
-                  </a>
+                  <ReportingRecommendations report={report} />
                   <button
                     className="sr-secondary sr-wide"
                     onClick={() => {
