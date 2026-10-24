@@ -40,6 +40,29 @@ test("권한·중복 후보·사진 공개·만료·삭제를 실제 API로 검�
   };
   const r = await upload(a);
   try {
+    expect((await a.get("/api/locations?q=x")).status()).toBe(400);
+    expect((await a.get("/api/locations?region=unknown")).status()).toBe(400);
+    expect(
+      (
+        await b.post("/api/reports/" + r.id + "/draft", {
+          data: { consent: true },
+        })
+      ).status(),
+    ).toBe(404);
+    expect(
+      (
+        await a.post("/api/reports/" + r.id + "/inspect", {
+          data: { consent: false },
+        })
+      ).status(),
+    ).toBe(400);
+    expect(
+      (
+        await a.post("/api/reports/" + r.id + "/draft", {
+          data: { consent: true },
+        })
+      ).status(),
+    ).toBe(400);
     expect((await b.get("/api/reports/" + r.id)).status()).toBe(404);
     expect(
       (
@@ -296,100 +319,126 @@ test("용량 제한과 브라우저별 업로드 호출 제한", async () => {
     await client.dispose();
   }
 });
-test("모바일에서 사진→수동 위치·입력→사진 재확인→완료까지 진행", async ({
+// 화면 계약이 4단계 간편 흐름으로 바뀌어 기존 UI 시나리오를 새 사용 흐름으로 갱신합니다.
+test("간편 4단계·검색 선택·AI 실패 대체·전국 지도 즉시 표시", async ({
   page,
 }) => {
-  const browserErrors: string[] = [];
-  page.on("pageerror", (error) => browserErrors.push(error.message));
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const location = {
+    id: "mock-place",
+    name: "[테스트] 서울시청 앞 보도",
+    latitude: 37.5665,
+    longitude: 126.978,
+    bounds: [
+      [37.55, 126.96],
+      [37.58, 126.99],
+    ],
+  };
+  await page.route("**/api/locations?**", (route) =>
+    route.fulfill({
+      json: route.request().url().includes("region=")
+        ? { ...location, id: "mock-region", name: "서울특별시 중구" }
+        : [location],
+    }),
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /작은 발견이/ }),
+    page.getByRole("heading", { name: /사진 한 장으로/ }),
   ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBeTruthy();
-  await page.getByRole("button", { name: "위험 제보 시작하기" }).click();
-  await page.getByLabel("위험 사진 업로드").setInputFiles({
-    name: "demo.jpg",
+  await page
+    .getByRole("button", { name: "사진 올리고 시작하기", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "현장 사진 등록" }),
+  ).toBeVisible();
+  await page.getByLabel("위험 사진 선택").setInputFiles({
+    name: "fake.jpg",
     mimeType: "image/jpeg",
     buffer: await photo(),
   });
+  await page.getByRole("button", { name: "위치 확인으로" }).click();
   await expect(
-    page.getByRole("heading", { name: "위치를 확인해 주세요" }),
+    page.getByRole("heading", { name: "발견 위치 확인" }),
   ).toBeVisible();
-  // 위치 요청 실패를 재현하고 수동 입력 대체 경로를 확인합니다.
+  await expect(page.getByLabel("위도", { exact: true })).not.toBeVisible();
   await page.evaluate(() => {
-    navigator.geolocation.getCurrentPosition = (_success, error) =>
+    navigator.geolocation.getCurrentPosition = (_ok, error) =>
       error?.({ code: 1, message: "denied" } as GeolocationPositionError);
   });
-  await page.getByRole("button", { name: /현재 위치 사용/ }).click();
-  await expect(page.locator(".alert.error")).toContainText("직접 선택");
-  await page.getByLabel("위도", { exact: true }).fill("37.5665");
-  await page.getByLabel("경도", { exact: true }).fill("126.978");
-  await page.getByLabel("장소 설명").fill("[데모] 시청 앞 보도");
-  await page.getByRole("button", { name: "위치 저장 후 다음" }).click();
+  await page.getByRole("button", { name: "⌖ GPS로 현재 위치 찾기" }).click();
+  await expect(page.locator(".sr-alert.sr-error")).toContainText(
+    "아래에서 장소를 검색",
+  );
+  await page.getByLabel("장소 이름이나 주소로 찾기").fill("서울시청");
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await page.getByRole("button", { name: /서울시청 앞 보도.*선택/ }).click();
+  await expect(page.getByLabel("장소 설명")).toHaveValue(
+    "[테스트] 서울시청 앞 보도",
+  );
+  await page.getByRole("button", { name: "위치 확인 · 다음" }).click();
+  await expect(
+    page.getByRole("heading", { name: "발견 상황 및 유사 제보 확인" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("위험 유형", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("제목", { exact: true })).toHaveCount(0);
   await page
     .getByLabel("발견한 상황")
-    .fill("[데모] 보도블록에 균열이 있어 넘어질 수 있습니다.");
-  await page.getByLabel("제보 제목").fill("[데모] 보도블록 점검 요청");
-  await page.getByRole("button", { name: "저장 후 신고 준비" }).click();
-  await page
-    .getByRole("button", { name: "입력 내용으로 기본 양식 만들기" })
-    .click();
-  await expect(page.getByLabel("신고문 초안")).toHaveValue(/현장 확인/);
-  await page.getByLabel("편집한 제목").check();
-  await page.getByLabel("사진도 공개합니다").check();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await page
-    .getByRole("button", { name: "확인했으며 사진 공개에 동의" })
-    .click();
-  await page.getByRole("button", { name: "신고 진행 · 기록 저장" }).click();
+    .fill("[데모] 보도블록이 깨져서 넘어질 수 있어요.");
+  await page.getByRole("button", { name: "앱 내 유사 제보 확인" }).click();
   await expect(
-    page.getByRole("heading", {
-      name: "[데모] 보도블록 점검 요청",
-      exact: true,
-    }),
+    page.getByRole("heading", { name: "유사 제보 없음" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "확인하고 다음" }).click();
+  await expect(
+    page.getByRole("link", { name: "안전신문고 열기" }),
+  ).toHaveAttribute("href", "https://www.safetyreport.go.kr/");
   await page
-    .getByRole("button", { name: "신고 완료 표시 (사용자 확인)" })
+    .getByRole("checkbox", { name: /사진·위치·설명을 외부 AI/ })
+    .check();
+  await page.getByRole("button", { name: "✧ AI로 신고문 작성하기" }).click();
+  await expect(page.locator(".sr-alert.sr-error")).toContainText("AI 키");
+  await page
+    .getByLabel("제목", { exact: true })
+    .fill("[데모] 보도블록 점검 요청");
+  await page
+    .getByLabel("신고 내용", { exact: true })
+    .fill(
+      "[데모] 서울시청 앞 보도블록 파손을 확인하고 필요한 조치를 부탁드립니다.",
+    );
+  await page
+    .getByRole("checkbox", { name: /사진·위치·설명을 외부 AI/ })
+    .uncheck();
+  await page
+    .getByText("지도 공개 범위 선택 (선택 사항)", { exact: true })
     .click();
-  await expect(page.locator(".page-title .badge")).toHaveText(
-    "신고 완료(사용자 확인)",
-  );
-  // 색상·필터 렌더링만 검사하는 가짜 AI 결과이며 실제 모델 성능 검증과 구분합니다.
+  await page.getByRole("checkbox", { name: /내용 요약·대략적인 위치/ }).check();
+  await page.getByRole("checkbox", { name: /사진도 공개합니다/ }).check();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "사진 공개에 동의합니다" }).click();
+  await page.getByRole("button", { name: "내 기록에 보관하기" }).click();
+  await expect(
+    page.getByRole("heading", { name: "[데모] 보도블록 점검 요청" }),
+  ).toBeVisible();
+  // 지도 색상 검사에만 쓰는 가짜 평가이며 실제 AI 성능 검증과 구분합니다.
   await database.report.updateMany({
     where: { title: "[데모] 보도블록 점검 요청" },
     data: {
       riskLevel: "HIGH",
-      riskReason: "[테스트 전용 가짜 평가] 낙상 위험 추정. 현장 확인 필요.",
+      riskReason: "[테스트] 넘어짐 위험. 현장 확인 필요.",
       riskAssessedAt: new Date(),
     },
   });
-  await page.getByRole("button", { name: "제보 지도", exact: true }).click();
+  await page.getByRole("button", { name: "위험 지도", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "우리 동네 제보 지도" }),
+    page.getByRole("heading", { name: "전국 위험 지도" }),
   ).toBeVisible();
+  await expect(page.getByLabel("시·도 선택")).toHaveCount(0);
+  await expect(page.getByLabel("시·군·구 선택")).toHaveCount(0);
   await expect(page.locator(".map-marker").first()).toBeVisible();
-  await page.getByRole("button", { name: "AI 위험 지도", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "우리 동네 AI 위험 지도" }),
-  ).toBeVisible();
-  await expect(page.locator(".risk-map-intro")).toContainText("현장 확인");
-  await page
-    .locator(".risk-legend")
-    .getByRole("button", { name: "판단 불가", exact: true })
-    .click();
-  await expect(page.locator(".report-list .report-card")).toHaveCount(0);
-  await page
-    .locator(".risk-legend")
-    .getByRole("button", { name: "높음", exact: true })
-    .click();
-  await expect(page.locator(".report-list .risk-badge")).toHaveText(
-    "AI 추정 높음",
-  );
+  await page.getByRole("button", { name: "전국 보기", exact: true }).click();
+  await page.getByRole("button", { name: "높음", exact: true }).click();
   await expect(page.locator(".map-marker span").first()).toHaveCSS(
     "background-color",
     "rgb(211, 70, 72)",
@@ -398,16 +447,19 @@ test("모바일에서 사진→수동 위치·입력→사진 재확인→완료
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
-  ).toBeTruthy();
+  ).toBe(true);
   await page.screenshot({
-    path: "test-results/mobile-map.png",
+    path: "test-results/simple-mobile-map.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: /보도블록 점검 요청/ }).click();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "사진과 제보 삭제" }).click();
+  await page
+    .getByRole("button", { name: /보도블록 점검 요청.*자세히 보기/ })
+    .click();
+  await page.getByText("기록 상태와 공개 범위 관리", { exact: true }).click();
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "이 기록 삭제" }).click();
   await expect(
-    page.getByRole("heading", { name: "내가 남긴 제보" }),
+    page.getByRole("heading", { name: "내 기록", exact: true }),
   ).toBeVisible();
-  expect(browserErrors).toEqual([]);
+  expect(errors).toEqual([]);
 });

@@ -48,8 +48,8 @@ async function upload(kind, patch, shift = 0) {
   const r = await res.json();
   ids.push(r.id);
   await api("/" + r.id, "PATCH", {
-    latitude: 35.001234,
-    longitude: 128.001234,
+    latitude: 37.5665123,
+    longitude: 126.9780123,
     ...patch,
   });
   return r;
@@ -84,7 +84,8 @@ try {
       description:
         "[합성 검증] 가상 공원 동쪽 입구의 바닥 보도블록에 큰 금이 생겼습니다.",
       riskType: "보행 위험",
-      latitude: 35.0019,
+      latitude: 37.56655,
+      longitude: 126.9789,
     },
     7,
   );
@@ -122,8 +123,9 @@ try {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(baseURL);
-  await page.getByRole("button", { name: "AI 위험 지도", exact: true }).click();
-  await page.getByRole("heading", { name: "우리 동네 AI 위험 지도" }).waitFor();
+  await page.getByRole("button", { name: "위험 지도", exact: true }).click();
+  await page.locator(".sr-region-map .map").waitFor();
+  await page.getByRole("heading", { name: "전국 위험 지도" }).waitFor();
   await page.locator(".map-marker").first().waitFor();
   await page.waitForFunction(() =>
     Array.from(document.querySelectorAll(".leaflet-tile-loaded")).some(

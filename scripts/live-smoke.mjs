@@ -59,7 +59,8 @@ try {
   });
   await page.goto(baseURL);
   await page.screenshot({ path: "evidence/home-desktop.png", fullPage: true });
-  await page.getByRole("button", { name: "제보 지도", exact: true }).click();
+  await page.getByRole("button", { name: "위험 지도", exact: true }).click();
+  await page.locator(".sr-region-map .map").waitFor();
   await page.locator(".map-marker").first().waitFor();
   await page.waitForFunction(() =>
     Array.from(document.querySelectorAll(".leaflet-tile-loaded")).some(

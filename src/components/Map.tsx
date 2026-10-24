@@ -24,6 +24,8 @@ export default function Map({
   points = emptyPoints,
   onSelect,
   riskMode = false,
+  bounds,
+  preserveView = false,
 }: {
   lat?: number | null;
   lon?: number | null;
@@ -31,9 +33,12 @@ export default function Map({
   points?: Point[];
   onSelect?: (id: string) => void;
   riskMode?: boolean;
+  bounds?: [[number, number], [number, number]];
+  preserveView?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const fittedBounds = useRef<string | null>(null);
   const handlers = useRef({ onPick, onSelect });
   handlers.current = { onPick, onSelect };
   useEffect(() => {
@@ -45,6 +50,7 @@ export default function Map({
       markerZoomAnimation: false,
     }).setView([lat ?? 37.5665, lon ?? 126.978], 15);
     mapRef.current = map;
+    fittedBounds.current = null;
     const tiles = L.tileLayer(
       "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
       {
@@ -130,7 +136,21 @@ export default function Map({
     }
     const fit = () => {
       map.invalidateSize({ animate: false, pan: false });
-      if (!onPick && groups.length)
+      if (bounds) {
+        // 같은 크기에서 데이터만 갱신되면 탐색 위치를 유지하고, 화면 폭이 바뀌면 전국 범위를 다시 맞춥니다.
+        const signature = JSON.stringify([
+          bounds,
+          ref.current?.clientWidth,
+          ref.current?.clientHeight,
+        ]);
+        if (preserveView && fittedBounds.current === signature) return;
+        map.fitBounds(bounds, {
+          padding: [20, 20],
+          maxZoom: 14,
+          animate: false,
+        });
+        fittedBounds.current = signature;
+      } else if (!onPick && groups.length)
         map.fitBounds(
           L.latLngBounds(
             groups.map(
@@ -148,7 +168,7 @@ export default function Map({
       resize.disconnect();
       layer.remove();
     };
-  }, [lat, lon, onPick, points, riskMode]);
+  }, [lat, lon, onPick, points, riskMode, bounds, preserveView]);
   return (
     <>
       <div className="map" ref={ref} aria-label="제보 위치 지도" />

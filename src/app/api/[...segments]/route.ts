@@ -23,6 +23,7 @@ import {
 import { effectiveStatus, office } from "@/lib/rules";
 import { findSimilar } from "@/lib/similar-server";
 import { riskSchema, riskPrompt, riskInputChanged } from "@/lib/risk";
+import { assistReport } from "@/lib/report-assistance";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ segments: string[] }> };
@@ -182,6 +183,12 @@ async function handle(req: Request, context: Context) {
       await db.report.delete({ where: { id } });
       await unlink(path.join(storage, r.imagePath)).catch(() => {});
       return json({ deleted: true });
+    }
+    if ((action === "inspect" || action === "draft") && method === "POST") {
+      await body(req, z.object({ consent: z.literal(true) }).strict());
+      if (!r.description.trim() || r.latitude === null || r.longitude === null)
+        throw new ApiError(400, "위치와 발견한 상황을 먼저 알려 주세요.");
+      return json(ownReport(await assistReport(r, action === "draft")));
     }
     if (action === "analyze" && method === "POST") {
       const input = await body(
