@@ -15,4 +15,3 @@
 - 로컬 Worker 8798: 홈 HTTP 200, 지도 API HTTP 200 및 빈 배열. Chrome에서 최신 신고 기록 메뉴·지도 화면 표시, 브라우저 오류 0건.
 - 실제 외부 AI 호출은 이번 업로드 검사에 포함하지 않음. Linux·실서비스 부하·전체 보안은 미검증.
 - npm production 의존성 검사: 5건(critical 1, high 2, moderate 2). SECURITY-NOTES.md에 기록, 자동 수정하지 않음.
-
