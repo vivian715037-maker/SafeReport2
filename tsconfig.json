@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2017",
     "lib": [
       "dom",
       "dom.iterable",
@@ -24,9 +24,13 @@
     ],
     "paths": {
       "@/*": [
-        "./src/*"
+        "./*"
       ]
-    }
+    },
+    "types": [
+      "node",
+      "@cloudflare/workers-types"
+    ]
   },
   "include": [
     "next-env.d.ts",
@@ -34,10 +38,16 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    ".next-test/types/**/*.ts",
-    ".next-test/dev/types/**/*.ts"
+    "**/*.mts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "examples",
+    "dist",
+    ".vinext",
+    ".wrangler",
+    ".sites-runtime",
+    "outputs",
+    "work"
   ]
 }
